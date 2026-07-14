@@ -13,15 +13,30 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AIBRY Specialist Platform / Catalog OS",
+  metadataBase: new URL("https://specialists.aibry.shop"),
+  title: "AIBRY Specialist Platform | Catalog OS",
   description: "A coordinated platform of focused AI specialists with controlled authority, shared standards, and complete accountability.",
-  other: {
-    "codex-preview": "development",
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    type: "website",
+    url: "/",
+    siteName: "AIBRY Specialist Platform",
+    title: "AIBRY Specialist Platform | Catalog OS",
+    description: "A coordinated platform of focused AI specialists with controlled authority, shared standards, and complete accountability.",
+  },
+  twitter: {
+    card: "summary",
+    title: "AIBRY Specialist Platform | Catalog OS",
+    description: "A coordinated platform of focused AI specialists with controlled authority, shared standards, and complete accountability.",
   },
   icons: {
-    icon: "/favicon.svg",
+    icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
     shortcut: "/favicon.svg",
   },
+  manifest: "/site.webmanifest",
+  robots: { index: true, follow: true },
 };
 
 export default function RootLayout({
