@@ -98,11 +98,24 @@ actions tied to the current ChatGPT user. Leave public content anonymous.
 - `npm run start`: start the built Vinext application
 - `npm test`: build, validate, and verify the rendered development-preview metadata
 - `npm run validate:artifact`: recheck an existing artifact's manifest and ESM `default.fetch` export
+- `npm run smoke:prod`: request the deployed public routes and verify homepage metadata, custom 404 content, and the Worker security-header contract
 - `npm run db:generate`: generate Drizzle migrations after schema changes
 
 Use build and validation commands for targeted diagnosis after a remote failure, not as part of the normal checkpoint path.
 
 The timeout defaults can be overridden for a controlled canary with `SITES_INSTALL_TIMEOUT`, `SITES_INSTALL_KILL_AFTER`, `SITES_BUILD_TIMEOUT`, and `SITES_BUILD_KILL_AFTER`. A timeout fails the command; the helpers never retry an unchanged install or build.
+
+## Production Operations
+
+After a deployment is active, run `npm run smoke:prod`. It checks the production homepage, `robots.txt`, `sitemap.xml`, `manifest.webmanifest`, and a deliberately missing path. The check expects `200` for the public routes and `404` with the custom not-found content for the missing route. It also verifies the canonical, description, and Open Graph metadata plus the security headers defined in `worker/index.ts`. It uses only Node built-ins, does not send cookies, and does not print response cookies or environment values.
+
+To check another deployment origin, set `SITE_URL` to an origin-only HTTP(S) URL. For example, in PowerShell: `$env:SITE_URL = "https://staging.example"; npm run smoke:prod`. Clear the environment variable before the normal production check.
+
+Cloudflare dashboard steps (not automated by this repository):
+
+- In **Workers & Pages**, open the deployed Worker and use its **Logs** view for recent request and exception events. Use the available trace/observability view to follow a failing request by time, route, and request identifier; do not paste request headers, cookies, or tokens into incident notes.
+- For a rollback, open the Worker’s **Versions & Deployments** view, select the last known-good deployment, and use the dashboard rollback action. Then run `npm run smoke:prod` again. Confirm binding and route settings before rolling back if the deployment changed them.
+- Configure Cloudflare alerting for elevated **5xx/error rate** and **latency**. Select thresholds and notification destinations in the dashboard based on the site’s normal traffic baseline; this project does not provision alert policies or notification integrations.
 
 ## Learn More
 
