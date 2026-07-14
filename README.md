@@ -7,7 +7,9 @@ Drizzle support.
 ## Prerequisites
 
 - Node.js `>=22.13.0`
-- Linux with `flock`, `curl`, and GNU `timeout`
+- Node.js lifecycle commands are supported on Windows and Linux. The hardened
+  `install:ci` helper remains Linux-only because it uses `flock`, `curl`, and
+  GNU `timeout`.
 
 ## Sites Lifecycle
 
@@ -15,9 +17,9 @@ The Sites lifecycle CLI runs the locked dependency install before returning this
 
 This starter does not use `wrangler.jsonc`.
 
-`install:ci` is intentionally a single, non-retrying `npm ci`. It refuses a concurrent install for the same project, consumes a matching image-seeded npm cache with `--prefer-offline` while retaining registry fallback for a missing cache object, otherwise downloads and verifies the complete vinext tarball recorded in `package-lock.json`, limits npm to one socket, and terminates a stalled install. `build` applies a short timeout and then validates the Sites artifact. These helpers target Linux and use GNU `timeout`; they are not native macOS scripts.
+`install:ci` is intentionally a single, non-retrying Linux `npm ci` helper. It refuses a concurrent install for the same project, consumes a matching image-seeded npm cache with `--prefer-offline` while retaining registry fallback for a missing cache object, otherwise downloads and verifies the complete vinext tarball recorded in `package-lock.json`, limits npm to one socket, and terminates a stalled install. `build` applies the same bounded-build and artifact validation contract through Node, so it works on Windows and Linux.
 
-Scripts that need writable project-scoped home, npm, XDG, and temporary paths use `scripts/sites-env.sh`. The `dev` and `start` scripts honor the caller's runtime environment and keep Wrangler logs inside the checkout. The generated `.sites-runtime/` directory is disposable and ignored by Git.
+Scripts that need writable project-scoped home, npm, XDG, and temporary paths use Node-based wrappers. The `dev` and `start` scripts keep Wrangler logs inside the checkout. The generated `.sites-runtime/` directory is disposable and ignored by Git.
 
 ## Included Shape
 
