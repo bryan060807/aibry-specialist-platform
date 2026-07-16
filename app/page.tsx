@@ -1,28 +1,13 @@
 "use client";
 
 import { useState } from "react";
-
-const specialists = [
-  { id: "archivist", index: "01", name: "Archivist", role: "The Inspector", color: "green", brief: "Inspects the Music Vault, finds missing information, and reports what needs attention—without changing the source.", capabilities: ["Catalog inventory", "Gap detection", "Evidence reports"] },
-  { id: "admitter", index: "02", name: "Project Admitter", role: "The Gatekeeper", color: "blue", brief: "Creates the minimum safe records needed to formally admit music into the managed catalog.", capabilities: ["Admission checks", "Project records", "Boundary enforcement"] },
-  { id: "manager", index: "03", name: "Music Manager", role: "The Organizer", color: "violet", brief: "Enriches and manages approved music projects while leaving ownership of the music itself with the artist.", capabilities: ["Project context", "Creative operations", "Release coordination"] },
-];
-
-const authority = [
-  { id: "observe", number: "01", label: "Observe", command: "LOOK. DON’T TOUCH.", copy: "Inspect the system, identify gaps, and produce a clear report. No source state changes." },
-  { id: "propose", number: "02", label: "Propose", command: "RECOMMEND. DON’T CHANGE.", copy: "Prepare the exact change, explain the reason, and expose the expected outcome." },
-  { id: "authorize", number: "03", label: "Authorize", command: "HUMAN DECISION POINT.", copy: "A person reviews scope and evidence. Nothing proceeds without explicit authorization." },
-  { id: "apply", number: "04", label: "Apply", command: "APPROVED. THEN ACT.", copy: "Make only the authorized change, preserve a record, and stop at the defined boundary." },
-  { id: "validate", number: "05", label: "Validate", command: "TRUST NEEDS PROOF.", copy: "Independently observe the result and verify that reality matches the approved proposal." },
-];
-
-const evidence = ["What was reviewed", "What was found", "What was proposed", "What changed", "What was skipped", "Where judgment was required", "What failed—and why"];
+import { authorityStages, evidenceDisplayItems, specialists } from "@/lib/domain/specialists";
 
 export default function Home() {
   const [activeSpecialist, setActiveSpecialist] = useState(0);
   const [activeAuthority, setActiveAuthority] = useState(2);
   const specialist = specialists[activeSpecialist];
-  const stage = authority[activeAuthority];
+  const stage = authorityStages[activeAuthority];
 
   return (
     <main>
@@ -46,7 +31,7 @@ export default function Home() {
           <a className="button ghost" href="#authority"><span className="play">▶</span> See the authority loop</a>
         </div>
         <div className="status-rail" aria-label="Authority workflow">
-          {authority.map((item, i) => <button key={item.id} className={i === activeAuthority ? "active" : ""} onClick={() => setActiveAuthority(i)}><span>{String(i + 1).padStart(2, "0")}</span>{item.label}</button>)}
+          {authorityStages.map((item, i) => <button key={item.id} className={i === activeAuthority ? "active" : ""} onClick={() => setActiveAuthority(i)}><span>{String(i + 1).padStart(2, "0")}</span>{item.label}</button>)}
         </div>
         <aside className="hero-console" aria-label="System status">
           <div className="console-head"><span>LIVE SYSTEM MODEL</span><i>ONLINE</i></div>
@@ -68,7 +53,7 @@ export default function Home() {
             {specialists.map((item, i) => <button role="tab" aria-selected={i === activeSpecialist} key={item.id} onClick={() => setActiveSpecialist(i)} className={i === activeSpecialist ? "active" : ""}><span>{item.index}</span><div><strong>{item.name}</strong><small>{item.role}</small></div><b>→</b></button>)}
           </div>
           <article className={`specialist-card ${specialist.color}`}>
-            <div className="card-watermark">{specialist.index}</div><p className="card-label">ACTIVE SPECIALIST PROFILE</p><h3>{specialist.name}</h3><h4>{specialist.role}</h4><p>{specialist.brief}</p><ul>{specialist.capabilities.map(cap => <li key={cap}><span>✓</span>{cap}</li>)}</ul><div className="boundary"><span>AUTHORITY BOUNDARY</span><strong>{specialist.id === "archivist" ? "OBSERVE ONLY" : specialist.id === "admitter" ? "PROPOSE → APPROVED APPLY" : "REVIEW-GATED OPERATIONS"}</strong></div>
+            <div className="card-watermark">{specialist.index}</div><p className="card-label">ACTIVE SPECIALIST PROFILE</p><h3>{specialist.name}</h3><h4>{specialist.role}</h4><p>{specialist.brief}</p><ul>{specialist.capabilities.map(cap => <li key={cap}><span>✓</span>{cap}</li>)}</ul><div className="boundary"><span>AUTHORITY BOUNDARY</span><strong>{specialist.authorityBoundary}</strong></div>
           </article>
         </div>
       </section>
@@ -77,9 +62,9 @@ export default function Home() {
         <div className="section-heading"><div><p className="section-kicker">03 / CONTROLLED AUTHORITY</p><h2>The authority loop.<br/><em>Built to stop itself.</em></h2></div><p>Click through the operating sequence. The most important feature is not what the system can do—it’s where the system must wait.</p></div>
         <div className="authority-workbench">
           <div className="authority-track" role="tablist">
-            {authority.map((item, i) => <button key={item.id} role="tab" aria-selected={i === activeAuthority} onClick={() => setActiveAuthority(i)} className={i === activeAuthority ? "active" : ""}><span>{item.number}</span><strong>{item.label}</strong>{i < authority.length - 1 && <i>→</i>}</button>)}
+            {authorityStages.map((item, i) => <button key={item.id} role="tab" aria-selected={i === activeAuthority} onClick={() => setActiveAuthority(i)} className={i === activeAuthority ? "active" : ""}><span>{item.number}</span><strong>{item.label}</strong>{i < authorityStages.length - 1 && <i>→</i>}</button>)}
           </div>
-          <div className="stage-readout"><div><span>SELECTED STAGE / {stage.number}</span><h3>{stage.label}</h3></div><div><strong>{stage.command}</strong><p>{stage.copy}</p></div><div className="permission"><span>PERMISSION STATE</span><b>{stage.id === "authorize" ? "WAITING FOR HUMAN" : stage.id === "apply" ? "SCOPE LOCKED" : "EVIDENCE REQUIRED"}</b></div></div>
+          <div className="stage-readout"><div><span>SELECTED STAGE / {stage.number}</span><h3>{stage.label}</h3></div><div><strong>{stage.command}</strong><p>{stage.copy}</p></div><div className="permission"><span>PERMISSION STATE</span><b>{stage.permissionState}</b></div></div>
         </div>
       </section>
 
@@ -95,7 +80,7 @@ export default function Home() {
 
       <section className="evidence-section" id="evidence">
         <div className="section-heading"><div><p className="section-kicker">05 / COMPLETE ACCOUNTABILITY</p><h2>Every action leaves<br/><em>something inspectable.</em></h2></div><div className="asos-badge"><span>SHARED STANDARD</span><strong>ASOS <i>v1</i></strong><small>AIBRY Specialist Operational Standard</small></div></div>
-        <div className="evidence-grid">{evidence.map((item, i) => <article key={item}><span>{String(i + 1).padStart(2, "0")}</span><div className="evidence-icon">{["⌕","✦","≡","✓","≫","◉","!"][i]}</div><p>{item}</p></article>)}</div>
+        <div className="evidence-grid">{evidenceDisplayItems.map((item, i) => <article key={item.label}><span>{String(i + 1).padStart(2, "0")}</span><div className="evidence-icon">{item.icon}</div><p>{item.label}</p></article>)}</div>
       </section>
 
       <section className="future-section"><p className="section-kicker">THE CREATIVE STUDIO VISION</p><h2>One finished song.<br/><em>A complete release world.</em></h2><p className="future-copy">The same governed specialist model grows from catalog integrity into a coordinated creative campaign—without giving up the human decision point.</p><div className="domain-row">{["Song", "Artwork", "Merch assets", "Store + SEO copy", "Release package"].map((x,i)=><div key={x}><span>0{i+1}</span><strong>{x}</strong></div>)}</div></section>
