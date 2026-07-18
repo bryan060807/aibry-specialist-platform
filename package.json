@@ -11,6 +11,7 @@
     "build": "node scripts/build-verified.mjs",
     "start": "node scripts/run-with-sites-env.mjs vinext start",
     "test": "npm run build && node --test tests/rendered-html.test.mjs",
+    "test:build-week": "node --test tests/build-week-walking-skeleton.test.mjs",
     "validate:artifact": "node scripts/validate-artifact.mjs",
     "smoke:prod": "node scripts/smoke-prod.mjs",
     "lint": "node scripts/run-with-sites-env.mjs eslint . --ignore-pattern dist --ignore-pattern .next",
