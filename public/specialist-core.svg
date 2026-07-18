@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" role="img" aria-labelledby="title desc">
+  <title id="title">AIBRY Specialists OS core</title>
+  <desc id="desc">Abstract red governed intelligence core with orbital systems on a dark grid.</desc>
+  <defs>
+    <radialGradient id="bg" cx="70%" cy="45%" r="68%">
+      <stop offset="0" stop-color="#3b0a08"/>
+      <stop offset="0.32" stop-color="#130706"/>
+      <stop offset="1" stop-color="#050505"/>
+    </radialGradient>
+    <radialGradient id="core" cx="45%" cy="40%" r="60%">
+      <stop offset="0" stop-color="#ff8a78"/>
+      <stop offset="0.28" stop-color="#e12b20"/>
+      <stop offset="1" stop-color="#5e0805"/>
+    </radialGradient>
+    <filter id="glow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="18" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <pattern id="grid" width="80" height="80" patternUnits="userSpaceOnUse">
+      <path d="M80 0H0V80" fill="none" stroke="#ffffff" stroke-opacity=".07" stroke-width="1"/>
+    </pattern>
+  </defs>
+  <rect width="1600" height="1000" fill="url(#bg)"/>
+  <rect width="1600" height="1000" fill="url(#grid)" opacity=".7"/>
+  <g transform="translate(1090 500)" fill="none" stroke="#e12b20">
+    <ellipse rx="360" ry="210" opacity=".26"/>
+    <ellipse rx="285" ry="390" transform="rotate(42)" opacity=".2"/>
+    <ellipse rx="285" ry="390" transform="rotate(-42)" opacity=".2"/>
+    <circle r="250" opacity=".16" stroke-dasharray="12 18"/>
+    <circle r="170" opacity=".42"/>
+    <circle r="108" fill="url(#core)" stroke="#ff6f61" stroke-width="2" filter="url(#glow)"/>
+    <circle r="30" fill="#fff3ef" stroke="none" opacity=".82" filter="url(#glow)"/>
+  </g>
+  <g fill="#e12b20" filter="url(#glow)">
+    <circle cx="760" cy="500" r="7"/><circle cx="1260" cy="182" r="6"/><circle cx="1400" cy="620" r="8"/><circle cx="930" cy="842" r="6"/>
+  </g>
+  <g stroke="#e12b20" stroke-opacity=".35" fill="none">
+    <path d="M760 500H920"/><path d="M1260 182l-82 174"/><path d="M1400 620l-180-72"/><path d="M930 842l82-190"/>
+  </g>
+</svg>

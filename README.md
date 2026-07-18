@@ -1,123 +1,174 @@
-# vinext-starter
+# ASOS Incident Control Room
 
-A clean full-stack starter running on
-[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
-Drizzle support.
+ASOS is a governed AI operations kernel demonstrated through one deterministic, TrackMaster-inspired login incident. GPT-5.6 analyzes evidence and proposes remediation, but the proposing specialist cannot approve its own action. The kernel rejects self-approval, a trusted human operator authorizes the bounded remediation, execution passes through the real authority gate, verification evidence is recorded, the case closes, and the full replay remains inspectable.
 
-## Prerequisites
+## Judge Testing Path
+
+1. Open the public site.
+2. Select **Launch Live Demo**.
+3. Keep **Interactive Constitution: deny specialist self-approval** enabled.
+4. Select **Run governed incident**.
+5. Observe:
+   - live GPT-5.6 analysis or the clearly labeled saved-response fallback;
+   - self-approval rejected by the kernel;
+   - the explicit **Why was self-approval blocked?** explanation;
+   - authorized human approval;
+   - simulated execution through `CaseApplicationService`;
+   - verification evidence, case closure, and replay report.
+6. Select **Reset demo**, then repeat the incident.
+7. Disable the Constitution toggle to preview the unsafe counterfactual. ASOS intentionally refuses to execute that path.
+
+The judged path requires no login.
+
+## Local Setup
+
+### Requirements
 
 - Node.js `>=22.13.0`
-- Node.js lifecycle commands are supported on Windows and Linux. The hardened
-  `install:ci` helper remains Linux-only because it uses `flock`, `curl`, and
-  GNU `timeout`.
+- npm
+- Windows or Linux
 
-## Sites Lifecycle
+### Install and run
 
-The Sites lifecycle CLI runs the locked dependency install before returning this checkout. Edit the source under `app/`, then checkpoint when a coherent milestone is ready to inspect or share. The remote Sites builder runs `npm run build` against the pushed commit. Do not repeat install or build as a normal pre-checkpoint step.
-
-This starter does not use `wrangler.jsonc`.
-
-`install:ci` is intentionally a single, non-retrying Linux `npm ci` helper. It refuses a concurrent install for the same project, consumes a matching image-seeded npm cache with `--prefer-offline` while retaining registry fallback for a missing cache object, otherwise downloads and verifies the complete vinext tarball recorded in `package-lock.json`, limits npm to one socket, and terminates a stalled install. `build` applies the same bounded-build and artifact validation contract through Node, so it works on Windows and Linux.
-
-Scripts that need writable project-scoped home, npm, XDG, and temporary paths use Node-based wrappers. The `dev` and `start` scripts keep Wrangler logs inside the checkout. The generated `.sites-runtime/` directory is disposable and ignored by Git.
-
-## Included Shape
-
-- edit site code under `app/`
-- `app/chatgpt-auth.ts` provides optional dispatch-owned ChatGPT sign-in helpers
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/index.ts` reads the D1 binding from the Cloudflare Worker environment
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
-
-## Workspace Auth Headers
-
-OpenAI workspace sites can read the current user's email from
-`oai-authenticated-user-email`.
-
-SIWC-authenticated workspace sites may also receive
-`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
-`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
-`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
-
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
+```bash
+npm install
+npm run dev
 ```
 
-## Optional Dispatch-Owned ChatGPT Sign-In
+Open:
 
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
-optional or required ChatGPT sign-in:
+```text
+http://localhost:3000/build-week
+```
 
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
-  anonymous visitors through Sign in with ChatGPT.
-- Use `chatGPTSignInPath(returnTo)` and `chatGPTSignOutPath(returnTo)` for
-  browser links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in
-  or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because
-  they depend on per-request identity headers.
+### Live GPT-5.6 mode
 
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
-OAuth cookies, and identity header injection. Do not implement app routes for
-those reserved paths. Routes that do not import and call the helper remain
-anonymous-compatible.
+Create `.env.local` in the repository root:
 
-SIWC establishes identity only; it does not prove workspace membership. Use the
-Sites hosting platform's access policy controls for workspace-wide restrictions,
-or enforce explicit server-side membership or allowlist checks.
+```env
+OPENAI_API_KEY=your_key_here
+OPENAI_BUILD_WEEK_MODEL=gpt-5.6
+```
 
-Use SIWC for account pages, user-specific dashboards, saved records, and write
-actions tied to the current ChatGPT user. Leave public content anonymous.
+Never commit `.env.local` or expose the key in screenshots, logs, replay output, or submission text.
 
-## Diagnostic Commands
+When the key is missing, the request times out, the API returns an error, or structured output fails validation, the app automatically uses the frozen saved GPT-5.6 response and labels the fallback clearly.
 
-- `npm run install:ci`: perform the one bounded lockfile install
-- `npm run dev`: start the Vite/Vinext development server
-- `npm run build`: build and validate the deployable Sites artifact
-- `npm run start`: start the built Vinext application
-- `npm test`: build, validate, and verify the rendered development-preview metadata
-- `npm run validate:artifact`: recheck an existing artifact's manifest and ESM `default.fetch` export
-- `npm run smoke:prod`: request the deployed public routes and verify homepage metadata, custom 404 content, and the Worker security-header contract
-- `npm run db:generate`: generate Drizzle migrations after schema changes
+## Validation
 
-Use build and validation commands for targeted diagnosis after a remote failure, not as part of the normal checkpoint path.
+```bash
+npm run test:build-week
+npm run lint
+npm run build
+```
 
-The timeout defaults can be overridden for a controlled canary with `SITES_INSTALL_TIMEOUT`, `SITES_INSTALL_KILL_AFTER`, `SITES_BUILD_TIMEOUT`, and `SITES_BUILD_KILL_AFTER`. A timeout fails the command; the helpers never retry an unchanged install or build.
+The Build Week acceptance test verifies:
 
-## Production Operations
+- deterministic reset;
+- frozen TrackMaster incident fixture;
+- saved GPT-5.6 fallback fixture;
+- bounded specialist roles;
+- kernel-enforced self-approval rejection;
+- authorized approval;
+- execution through the existing application service and authority gate;
+- verification evidence;
+- case closure;
+- replay report;
+- successful reset and repeat.
 
-After a deployment is active, run `npm run smoke:prod`. It checks the production homepage, `robots.txt`, `sitemap.xml`, `manifest.webmanifest`, and a deliberately missing path. The check expects `200` for the public routes and `404` with the custom not-found content for the missing route. It also verifies the canonical, description, and Open Graph metadata plus the security headers defined in `worker/index.ts`. It uses only Node built-ins, does not send cookies, and does not print response cookies or environment values.
+## Supported Platforms
 
-To check another deployment origin, set `SITE_URL` to an origin-only HTTP(S) URL. For example, in PowerShell: `$env:SITE_URL = "https://staging.example"; npm run smoke:prod`. Clear the environment variable before the normal production check.
+- Windows development and operator workflow
+- Linux/Fedora development and validation
+- Cloudflare-hosted Vinext/Vite deployment
+- Modern desktop and mobile browsers
 
-Cloudflare dashboard steps (not automated by this repository):
+## Pre-existing Work vs. Build Week Additions
 
-- In **Workers & Pages**, open the deployed Worker and use its **Logs** view for recent request and exception events. Use the available trace/observability view to follow a failing request by time, route, and request identifier; do not paste request headers, cookies, or tokens into incident notes.
-- For a rollback, open the Worker’s **Versions & Deployments** view, select the last known-good deployment, and use the dashboard rollback action. Then run `npm run smoke:prod` again. Confirm binding and route settings before rolling back if the deployment changed them.
-- Configure Cloudflare alerting for elevated **5xx/error rate** and **latency**. Select thresholds and notification destinations in the dashboard based on the site’s normal traffic baseline; this project does not provision alert policies or notification integrations.
+### Pre-existing before Build Week
 
-## Learn More
+- ASOS domain model
+- specialist and authority policies
+- case kernel
+- provider-independent application ports
+- `CaseApplicationService`
+- existing unit tests for domain, kernel, and application behavior
+- AIBRY Specialist Platform landing site and Cloudflare deployment foundation
 
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+### Added during Build Week
+
+- one frozen TrackMaster-inspired login incident fixture
+- deterministic in-memory persistence for the judged workflow
+- simulated remediation executor using the real application-service path
+- live GPT-5.6 Responses API analysis with strict structured output
+- clearly labeled saved-response fallback
+- self-approval attempt and kernel-enforced rejection
+- trusted human approval path
+- verification evidence, closure, reset, and replay
+- Interactive Constitution self-approval rule
+- public Incident Control Room UI
+- focused end-to-end acceptance test
+
+## Codex Usage
+
+Codex was used for early repository inspection and an initial walking-skeleton attempt. The primary Build Week Codex session to preserve for Devpost `/feedback` evidence is:
+
+```text
+7ee3b678bc1a
+```
+
+Later corrective work was completed through direct, reviewable Garage Admin file edits after Codex wrapper behavior proved unreliable for the narrow correction pass.
+
+## GPT-5.6 Integration
+
+The server uses the OpenAI Responses API with strict JSON schema output for:
+
+- incident summary;
+- bounded hypotheses;
+- recommended remediation.
+
+GPT-5.6 remains advisory. It cannot authorize or execute remediation. Authority remains:
+
+```text
+OBSERVE → PROPOSE → HUMAN AUTHORIZATION → APPLY → INDEPENDENT VERIFY
+```
+
+## Interactive Constitution
+
+Milestone 3 intentionally limits the Constitution to one counterfactual rule:
+
+> The specialist that proposes a remediation may not approve its own APPLY action.
+
+The enabled state runs the real governed path. The disabled state explains the unsafe counterfactual but does not execute it.
+
+## Three-minute Demo Path
+
+- **0:00–0:20** — Open the public site and launch the Control Room.
+- **0:20–0:50** — Explain the incident, evidence, and live/fallback GPT-5.6 analysis.
+- **0:50–1:25** — Show the specialist attempting self-approval and the kernel rejecting it.
+- **1:25–1:55** — Show trusted human authorization and execution through the authority gate.
+- **1:55–2:25** — Show verification evidence, closure, and replay.
+- **2:25–2:45** — Reset and repeat successfully.
+- **2:45–3:00** — Toggle the Constitution off and explain why ASOS refuses the unsafe counterfactual.
+
+## Submission Checklist
+
+- [ ] Public deployment accessible without login
+- [ ] Fresh-browser run/reset/repeat verification
+- [ ] Live GPT-5.6 path verified
+- [ ] Saved-response fallback verified
+- [ ] Final screenshots captured
+- [ ] Launch Control Room link verified from the public landing page
+- [ ] Devpost story and technology tags updated
+- [ ] Three-minute narrated demo recorded
+- [ ] Early valid submission created
+- [ ] `/feedback` session ID included
+
+## Coming Next — Post-submission
+
+- deployment regression incident
+- worker queue backlog incident
+- ChordMaster synchronization incident
+- catalog consistency incident
+
+These are roadmap items only. The submission is intentionally centered on one flawless, memorable incident.
