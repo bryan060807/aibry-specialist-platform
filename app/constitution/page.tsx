@@ -46,7 +46,7 @@ export default function ConstitutionPage() {
             <div className="constitution-result"><small>{activeRule.enabled ? "GOVERNED RESULT" : "UNSAFE COUNTERFACTUAL"}</small><strong>{activeRule.enabled ? "The authority gate preserves separation of duties." : "The system explains the risk but does not execute the unsafe path."}</strong></div>
           </article>
         </section>
-        <section className="constitution-footer-cta"><div><p>SEE THE RULE UNDER PRESSURE</p><h2>Watch self-approval fail<br />inside a real incident.</h2></div><div><a className="button button-primary" href="/build-week">Launch Incident Control Room</a><a className="button button-secondary" href="/kernel">Inspect the ASOS Kernel</a></div></section>
+        <section className="constitution-footer-cta"><div><p>SEE THE RULE UNDER PRESSURE</p><h2>Watch self-approval fail<br />inside a real incident.</h2></div><div><a className="button button-primary" href="/build-week">Launch Live Demo</a><a className="button button-secondary" href="/kernel">Inspect the ASOS Kernel</a></div></section>
       </main>
     </div>
   );
