@@ -2,23 +2,30 @@
 
 ASOS is a governed AI operations kernel demonstrated through one deterministic, TrackMaster-inspired login incident. GPT-5.6 analyzes evidence and proposes remediation, but the proposing specialist cannot approve its own action. The kernel rejects self-approval, a trusted human operator authorizes the bounded remediation, execution passes through the real authority gate, verification evidence is recorded, the case closes, and the full replay remains inspectable.
 
+## Demo Video
+
+- [Watch the narrated demo on YouTube](https://www.youtube.com/watch?v=9Fkm_76_K_k)
+- [Watch the hosted MP4](https://specialists.aibry.shop/DEMO_Video.mp4)
+- [View the video file in this repository](./public/DEMO_Video.mp4)
+
 ## Judge Testing Path
 
-1. Open the public site.
-2. Select **Launch Live Demo**.
-3. Keep **Interactive Constitution: deny specialist self-approval** enabled.
-4. Select **Run governed incident**.
-5. Observe:
+The judged experience is a fixed, deterministic TrackMaster-inspired login incident. It requires no installation, login, upload, or repository submission.
+
+1. Open [https://specialists.aibry.shop/build-week](https://specialists.aibry.shop/build-week).
+2. Keep **Interactive Constitution: deny specialist self-approval** enabled.
+3. Select **Run governed incident**.
+4. Observe:
    - live GPT-5.6 analysis or the clearly labeled saved-response fallback;
    - self-approval rejected by the kernel;
    - the explicit **Why was self-approval blocked?** explanation;
    - authorized human approval;
    - simulated execution through `CaseApplicationService`;
    - verification evidence, case closure, and replay report.
-6. Select **Reset demo**, then repeat the incident.
-7. Disable the Constitution toggle to preview the unsafe counterfactual. ASOS intentionally refuses to execute that path.
+5. Select **Reset demo**, then repeat the incident.
+6. Disable the Constitution toggle to preview the unsafe counterfactual. ASOS intentionally refuses to execute that path.
 
-The judged path requires no login.
+For local development, install Node.js `>=22.13.0` and npm, run `npm install` followed by `npm run dev`, then open `http://localhost:3000/build-week`. Validate the fixed test with `npm run test:build-week`, `npm run lint`, and `npm run build`.
 
 ## Local Setup
 
@@ -111,10 +118,10 @@ The Build Week acceptance test verifies:
 
 ## Codex Usage
 
-Codex was used for early repository inspection and an initial walking-skeleton attempt. The primary Build Week Codex session to preserve for Devpost `/feedback` evidence is:
+Codex was used for early repository inspection and the primary Build Week implementation pass. The raw Codex session ID preserved for Devpost `/feedback` evidence is:
 
 ```text
-7ee3b678bc1a
+019f7395-d625-7bc0-82e2-e81ec2524724
 ```
 
 Later corrective work was completed through direct, reviewable Garage Admin file edits after Codex wrapper behavior proved unreliable for the narrow correction pass.
@@ -160,9 +167,9 @@ The enabled state runs the real governed path. The disabled state explains the u
 - [ ] Final screenshots captured
 - [ ] Launch Control Room link verified from the public landing page
 - [ ] Devpost story and technology tags updated
-- [ ] Three-minute narrated demo recorded
+- [x] Three-minute narrated demo recorded
 - [ ] Early valid submission created
-- [ ] `/feedback` session ID included
+- [x] `/feedback` session ID included
 
 ## Coming Next — Post-submission
 
