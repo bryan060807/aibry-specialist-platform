@@ -16,7 +16,21 @@ import {
   type AuthorityEvaluationInput,
   type AuthorityEvaluationResult,
 } from "../domain/authority";
-import type { EvidenceRecord, ExecutionRecord, ExecutionStatus, ProjectContextRef } from "../domain/execution";
+import type {
+  EvidenceRecord,
+  ExecutionRecord,
+  ExecutionStatus,
+  ProjectContextRef,
+} from "../domain/execution";
+import {
+  sameProject,
+  sameBinding,
+  ProjectReference,
+} from "../domain/governance";
+import type {
+  GovernanceBinding,
+  GovernanceContext,
+} from "../domain/governance";
 import type { AuthorityStageId } from "../domain/specialists";
 
 export type {
@@ -29,6 +43,7 @@ export type {
 
 export type CaseKernelErrorCode =
   | CaseDomainErrorCode
+  | "governance_context_mismatch"
   | "case_required"
   | "case_already_open"
   | "authority_decision_not_found"
@@ -69,6 +84,8 @@ export type EvaluateAndRecordAuthorityInput = {
   decidedAt: string;
   requestedAction?: string;
   isWithinApprovedScope?: boolean;
+  binding?: GovernanceBinding;
+  governance?: GovernanceContext;
 };
 
 export type AttachAuthorizedExecutionInput = {
@@ -180,10 +197,36 @@ function findAuthorityDecision(
   record: CaseRecord,
   decisionId: CaseAuthorityDecisionRecord["id"],
 ): CaseAuthorityDecisionRecord | undefined {
-  return record.authorityDecisions.find((decision) => decision.id === decisionId);
+  return record.authorityDecisions.findLast(
+    (decision) => decision.id === decisionId,
+  );
 }
 
-export function initializeCase(input: InitializeCaseInput): CaseKernelResult<CaseRecord> {
+export function initializeCase(
+  input: InitializeCaseInput,
+): CaseKernelResult<CaseRecord> {
+  if (!ProjectReference.safeParse(input.project).success)
+    return deny(
+      {
+        code: "governance_context_mismatch",
+        message: "Unsupported owner reference.",
+      },
+      undefined,
+    );
+  if (
+    input.project.sourceOfTruth === "novel-owner" &&
+    (!input.governanceBinding ||
+      input.governanceBinding.caseId !== input.id ||
+      input.governanceBinding.specialistId !== input.specialistId ||
+      !sameProject(input.governanceBinding.project, input.project))
+  )
+    return deny(
+      {
+        code: "governance_context_mismatch",
+        message: "Editorial case requires its own immutable owner binding.",
+      },
+      undefined,
+    );
   return fromDomainResult(openCase(input));
 }
 
@@ -191,6 +234,21 @@ export function evaluateAndRecordAuthority(
   record: CaseRecord,
   input: EvaluateAndRecordAuthorityInput,
 ): CaseKernelResult<CaseRecord> {
+  if (
+    record.project.sourceOfTruth === "novel-owner" &&
+    (!input.binding ||
+      !record.governanceBinding ||
+      !sameBinding(input.binding, record.governanceBinding) ||
+      !sameProject(input.binding.project, record.project) ||
+      input.binding.caseId !== record.id)
+  )
+    return deny(
+      {
+        code: "governance_context_mismatch",
+        message: "Authority binding does not belong to this case.",
+      },
+      record,
+    );
   const authorityInput: AuthorityEvaluationInput = {
     specialistId: record.specialistId,
     requestedStageId: input.requestedStageId,
@@ -198,6 +256,9 @@ export function evaluateAndRecordAuthority(
     hasHumanAuthorization: input.hasHumanAuthorization,
     requestedAction: input.requestedAction,
     isWithinApprovedScope: input.isWithinApprovedScope,
+    binding: input.binding,
+    governance: input.governance,
+    evaluatedAt: input.decidedAt,
   };
   const authorityResult = evaluateAuthority(authorityInput);
   const decision: CaseAuthorityDecisionRecord = {
@@ -227,6 +288,17 @@ export function attachAuthorizedExecution(
   record: CaseRecord,
   input: AttachAuthorizedExecutionInput,
 ): CaseKernelResult<CaseRecord> {
+  if (
+    record.project.sourceOfTruth === "novel-owner" &&
+    record.governanceBinding?.executionId !== input.executionId
+  )
+    return deny(
+      {
+        code: "governance_context_mismatch",
+        message: "Execution does not belong to the bound case command.",
+      },
+      record,
+    );
   const decision = findAuthorityDecision(record, input.authorityDecisionId);
 
   if (!decision) {
@@ -304,7 +376,9 @@ export function closeKernelCase(
   return ok(result.value);
 }
 
-export function processCaseStep(input: ProcessCaseStepInput): CaseKernelResult<CaseRecord> {
+export function processCaseStep(
+  input: ProcessCaseStepInput,
+): CaseKernelResult<CaseRecord> {
   const { caseRecord, step } = input;
 
   if (step.type === "open_case") {
@@ -312,7 +386,8 @@ export function processCaseStep(input: ProcessCaseStepInput): CaseKernelResult<C
       return deny(
         {
           code: "case_already_open",
-          message: "Cannot open a new case step when a case record is already present.",
+          message:
+            "Cannot open a new case step when a case record is already present.",
         },
         caseRecord,
       );

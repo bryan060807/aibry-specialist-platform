@@ -1,6 +1,18 @@
-import type {
-  TrustedAuthorityResolver,
-} from "./ports/authority-resolution";
+import {
+  GovernanceBinding,
+  sameBinding,
+  sameProject,
+  type GovernanceContext,
+} from "../domain/governance";
+import {
+  RunCaseInput,
+  ExecutionValue,
+  CaseRecordValue,
+} from "../domain/runtime";
+import { evaluateAuthority } from "../domain/authority";
+import type { SpecialistIdentity } from "../domain/registration";
+import type { TrustedGovernanceResolver } from "./ports/governance-resolution";
+import type { TrustedAuthorityResolver } from "./ports/authority-resolution";
 import type {
   CaseSaveConflict,
   CaseVersion,
@@ -28,14 +40,8 @@ import type {
   ExecutionStatus,
   ProjectContextRef,
 } from "../domain/execution";
-import type {
-  AuthorityStageId,
-  SpecialistProfile,
-} from "../domain/specialists";
-import {
-  processCaseStep,
-  type CaseKernelError,
-} from "../kernel/case-kernel";
+import type { AuthorityStageId } from "../domain/specialists";
+import { processCaseStep, type CaseKernelError } from "../kernel/case-kernel";
 
 export type CaseApplicationClock = Readonly<{
   now(): string;
@@ -43,6 +49,7 @@ export type CaseApplicationClock = Readonly<{
 
 export type CaseApplicationServiceDependencies = Readonly<{
   authority: TrustedAuthorityResolver;
+  governance?: TrustedGovernanceResolver;
   cases: VersionedCasePersistence;
   executor: IdempotentCaseCommandExecutor;
   clock?: CaseApplicationClock;
@@ -53,12 +60,15 @@ export type RunGovernedCaseInput = Readonly<{
   title: string;
   request: CaseRequest;
   project: ProjectContextRef;
-  specialistId: SpecialistProfile["id"];
+  specialistId: SpecialistIdentity;
   stageId: AuthorityStageId;
   requestedAction?: string;
+  specialistVersion?: "1.0.0";
+  proposalDigest?: string;
 }>;
 
 export type CaseApplicationErrorCode =
+  | "invalid_input"
   | "authority_denied"
   | "authority_failure"
   | "authority_protocol_mismatch"
@@ -131,7 +141,20 @@ export function createCaseApplicationService(
   const clock = dependencies.clock ?? systemClock;
 
   return {
-    run: (input) => runGovernedCase(dependencies, clock, input),
+    run: (raw) => {
+      const input = RunCaseInput.safeParse(raw);
+      if (!input.success)
+        return Promise.resolve(
+          failure("invalid_input", "Invalid governed case input.", {
+            authorityDecisionId: "invalid",
+            commandId: "invalid",
+            idempotencyKey: "invalid",
+            executionId: "invalid",
+            recovered: false,
+          }),
+        );
+      return runGovernedCase(dependencies, clock, input.data);
+    },
   };
 }
 
@@ -141,14 +164,86 @@ async function runGovernedCase(
   input: RunGovernedCaseInput,
 ): Promise<CaseApplicationResult> {
   const identities = commandIdentities(input);
-  const opened = await loadOrOpenCase(dependencies.cases, clock, input, identities);
+  let binding: GovernanceBinding | undefined;
+  if (input.project.sourceOfTruth === "novel-owner") {
+    const parsed = GovernanceBinding.safeParse({
+      schemaVersion: "asos-binding.v1",
+      project: input.project,
+      caseId: input.caseId,
+      specialistId: input.specialistId,
+      specialistVersion: input.specialistVersion,
+      stage: input.stageId,
+      action: input.requestedAction,
+      scope: input.request.scope,
+      objective: input.request.objective,
+      proposalDigest: input.proposalDigest,
+      executionId: identities.executionId,
+    });
+    if (!parsed.success)
+      return failure(
+        "invalid_input",
+        "Editorial governance binding is incomplete.",
+        identities,
+      );
+    binding = parsed.data;
+  } else if (input.specialistId.includes("."))
+    return failure(
+      "case_context_mismatch",
+      "Editorial specialist requires a novel-owner reference.",
+      identities,
+    );
+  let context: GovernanceContext | undefined;
+  if (binding) {
+    try {
+      context = await dependencies.governance?.resolve(
+        structuredClone(binding),
+      );
+    } catch {
+      return failure(
+        "authority_failure",
+        "Trusted governance could not be verified.",
+        identities,
+      );
+    }
+  }
+  const opened = await loadOrOpenCase(
+    dependencies.cases,
+    clock,
+    input,
+    identities,
+    binding,
+  );
 
   if (!opened.ok) {
     return opened;
   }
 
   if (opened.value.record.status === "closed") {
-    return success(opened.value, undefined, [], opened.value.record.outcome, identities, true);
+    if (binding) {
+      const check = evaluateAuthority({
+        ...authorityInputFor(input, false),
+        binding,
+        governance: context,
+        evaluatedAt: clock.now(),
+      });
+      if (check.decision !== "allow")
+        return failure("authority_denied", check.reason, identities);
+    }
+    if (!opened.value.record.executionIds.includes(identities.executionId))
+      return failure(
+        "case_context_mismatch",
+        "Closed case cannot be reused for another command or stage.",
+        identities,
+        opened.value,
+      );
+    return success(
+      opened.value,
+      undefined,
+      [],
+      opened.value.record.outcome,
+      identities,
+      true,
+    );
   }
 
   const authority = await ensureAuthorityDecision(
@@ -158,6 +253,8 @@ async function runGovernedCase(
     input,
     opened.value,
     identities,
+    binding,
+    context,
   );
 
   if (!authority.ok) {
@@ -174,24 +271,73 @@ async function runGovernedCase(
   }
 
   if (caseHasCompletedCommand(authority.case.record, identities.executionId)) {
-    return success(authority.case, undefined, [], authority.case.record.outcome, identities, true);
+    return success(
+      authority.case,
+      undefined,
+      [],
+      authority.case.record.outcome,
+      identities,
+      true,
+    );
   }
 
   const command: ImmutableCaseCommand = Object.freeze({
     idempotencyKey: identities.idempotencyKey,
     caseId: input.caseId,
     authorityDecisionId: authority.decision.id,
+    ...(binding ? { governanceBinding: structuredClone(binding) } : {}),
   });
 
+  if (binding) {
+    try {
+      const refreshed = await dependencies.governance?.resolve(
+        structuredClone(binding),
+      );
+      const check = evaluateAuthority({
+        ...authorityInputFor(input, false),
+        binding,
+        governance: refreshed,
+        evaluatedAt: clock.now(),
+      });
+      if (check.decision !== "allow")
+        return failure(
+          "authority_denied",
+          check.reason,
+          identities,
+          authority.case,
+        );
+    } catch {
+      return failure(
+        "authority_failure",
+        "Governance refresh failed before execution.",
+        identities,
+        authority.case,
+      );
+    }
+  }
   let execution: ExecutionRecord;
 
   try {
-    execution = await dependencies.executor.execute(command);
+    const value = await dependencies.executor.execute(command);
+    const parsed = ExecutionValue.safeParse(value);
+    if (!parsed.success)
+      return failure(
+        "invalid_execution_binding",
+        "Execution response failed runtime validation.",
+        identities,
+        authority.case,
+      );
+    execution = parsed.data;
   } catch (error: unknown) {
-    return failure("execution_failure", errorMessage(error), identities, authority.case);
+    return failure(
+      "execution_failure",
+      errorMessage(error),
+      identities,
+      authority.case,
+    );
   }
 
-  const binding = validateExecutionBinding(
+  const executionBinding = validateExecutionBinding(
     authority.case.record,
     input,
     authority.decision,
@@ -199,20 +345,30 @@ async function runGovernedCase(
     execution,
   );
 
-  if (!binding.ok) {
-    return failure("invalid_execution_binding", binding.message, identities, authority.case);
+  if (!executionBinding.ok) {
+    return failure(
+      "invalid_execution_binding",
+      executionBinding.message,
+      identities,
+      authority.case,
+    );
   }
 
   const applied = applyExecutionThroughKernel(
     authority.case.record,
     execution,
-    binding.outcome,
+    executionBinding.outcome,
     clock.now(),
     authority.decision.id,
   );
 
   if (!applied.ok) {
-    return failure("kernel_rejected", applied.message, identities, authority.case);
+    return failure(
+      "kernel_rejected",
+      applied.message,
+      identities,
+      authority.case,
+    );
   }
 
   const saved = await saveCase(
@@ -227,10 +383,19 @@ async function runGovernedCase(
     return saved.result;
   }
 
-  return success(saved.value, execution, execution.result?.evidence ?? [], binding.outcome, identities, false);
+  return success(
+    saved.value,
+    execution,
+    execution.result?.evidence ?? [],
+    executionBinding.outcome,
+    identities,
+    false,
+  );
 }
 
-function commandIdentities(input: RunGovernedCaseInput): CaseApplicationDetail {
+export function commandIdentities(
+  input: RunGovernedCaseInput,
+): CaseApplicationDetail {
   const action = input.requestedAction ?? "default";
   const authorityDecisionId = `authority:${stablePart(input.caseId)}:${stablePart(input.stageId)}:${stablePart(action)}`;
   const commandId = `command:${authorityDecisionId}`;
@@ -254,6 +419,7 @@ async function loadOrOpenCase(
   clock: CaseApplicationClock,
   input: RunGovernedCaseInput,
   detail: CaseApplicationDetail,
+  binding?: GovernanceBinding,
 ): Promise<
   | Readonly<{ ok: true; value: VersionedCase }>
   | Readonly<{ ok: false } & Extract<CaseApplicationResult, { ok: false }>>
@@ -267,10 +433,31 @@ async function loadOrOpenCase(
   }
 
   if (loaded) {
+    if (!CaseRecordValue.safeParse(loaded.record).success)
+      return failure(
+        "persistence_failure",
+        "Stored case failed runtime validation.",
+        detail,
+      );
     const mismatch = validateCaseContext(loaded.record, input);
+    if (
+      binding &&
+      (!loaded.record.governanceBinding ||
+        !sameBinding(loaded.record.governanceBinding, binding))
+    )
+      return failure(
+        "case_context_mismatch",
+        "Editorial case binding cannot change.",
+        detail,
+      );
 
     if (mismatch) {
-      return failure("case_context_mismatch", mismatch, detail, loaded);
+      return failure(
+        "case_context_mismatch",
+        mismatch,
+        detail,
+        input.project.sourceOfTruth === "novel-owner" ? undefined : loaded,
+      );
     }
 
     return { ok: true, value: loaded };
@@ -285,6 +472,7 @@ async function loadOrOpenCase(
       project: input.project,
       specialistId: input.specialistId,
       openedAt: clock.now(),
+      governanceBinding: binding,
     },
   });
 
@@ -308,6 +496,8 @@ async function ensureAuthorityDecision(
   input: RunGovernedCaseInput,
   current: VersionedCase,
   detail: CaseApplicationDetail,
+  binding?: GovernanceBinding,
+  context?: GovernanceContext,
 ): Promise<
   | Readonly<{
       ok: true;
@@ -316,9 +506,12 @@ async function ensureAuthorityDecision(
     }>
   | Readonly<{ ok: false } & Extract<CaseApplicationResult, { ok: false }>>
 > {
-  const existing = findAuthorityDecision(current.record, detail.authorityDecisionId);
+  const existing = findAuthorityDecision(
+    current.record,
+    detail.authorityDecisionId,
+  );
 
-  if (existing) {
+  if (existing && !binding) {
     return { ok: true, case: current, decision: existing };
   }
 
@@ -326,12 +519,22 @@ async function ensureAuthorityDecision(
   let trustedAuthority: AuthorityEvaluationResult;
 
   try {
-    trustedAuthority = await authority.resolve(untrustedAuthorityInput);
+    trustedAuthority = binding
+      ? evaluateAuthority({
+          ...untrustedAuthorityInput,
+          binding,
+          governance: context,
+          evaluatedAt: clock.now(),
+        })
+      : await authority.resolve(untrustedAuthorityInput);
   } catch (error: unknown) {
     return failure("authority_failure", errorMessage(error), detail, current);
   }
 
-  const kernelInput = authorityInputFor(input, trustedAuthority.decision === "allow");
+  const kernelInput = authorityInputFor(
+    input,
+    trustedAuthority.decision === "allow",
+  );
   const evaluated = processCaseStep({
     caseRecord: current.record,
     step: {
@@ -343,6 +546,8 @@ async function ensureAuthorityDecision(
       requestedAction: input.requestedAction,
       isWithinApprovedScope: kernelInput.isWithinApprovedScope,
       decidedAt: clock.now(),
+      binding,
+      governance: context,
     },
   });
 
@@ -350,7 +555,9 @@ async function ensureAuthorityDecision(
     return failure("kernel_rejected", evaluated.error.message, detail, current);
   }
 
-  if (!authorityResultsMatch(trustedAuthority, evaluated.detail.authorityResult)) {
+  if (
+    !authorityResultsMatch(trustedAuthority, evaluated.detail.authorityResult)
+  ) {
     return failure(
       "authority_protocol_mismatch",
       "Trusted authority result did not match the kernel authority decision.",
@@ -359,16 +566,30 @@ async function ensureAuthorityDecision(
     );
   }
 
-  const saved = await saveCase(cases, evaluated.value, current.version, detail, current);
+  const saved = await saveCase(
+    cases,
+    evaluated.value,
+    current.version,
+    detail,
+    current,
+  );
 
   if (!saved.ok) {
     return saved.result;
   }
 
-  const decision = findAuthorityDecision(saved.value.record, detail.authorityDecisionId);
+  const decision = findAuthorityDecision(
+    saved.value.record,
+    detail.authorityDecisionId,
+  );
 
   if (!decision) {
-    return failure("kernel_rejected", "Kernel did not record the expected authority decision.", detail, saved.value);
+    return failure(
+      "kernel_rejected",
+      "Kernel did not record the expected authority decision.",
+      detail,
+      saved.value,
+    );
   }
 
   return { ok: true, case: saved.value, decision };
@@ -409,10 +630,10 @@ function authorityResultsMatch(
 ): boolean {
   return Boolean(
     kernel &&
-      trusted.decision === kernel.decision &&
-      trusted.reasonCode === kernel.reasonCode &&
-      trusted.policyId === kernel.policyId &&
-      trusted.ruleId === kernel.ruleId,
+    trusted.decision === kernel.decision &&
+    trusted.reasonCode === kernel.reasonCode &&
+    trusted.policyId === kernel.policyId &&
+    trusted.ruleId === kernel.ruleId,
   );
 }
 
@@ -420,7 +641,9 @@ function findAuthorityDecision(
   record: CaseRecord,
   decisionId: CaseAuthorityDecisionRecord["id"],
 ): CaseAuthorityDecisionRecord | undefined {
-  return record.authorityDecisions.find((decision) => decision.id === decisionId);
+  return record.authorityDecisions.findLast(
+    (decision) => decision.id === decisionId,
+  );
 }
 
 function validateCaseContext(
@@ -442,14 +665,8 @@ function validateCaseContext(
   return undefined;
 }
 
-function projectRefsMatch(left: ProjectContextRef, right: ProjectContextRef): boolean {
-  return (
-    left.sourceOfTruth === right.sourceOfTruth &&
-    left.externalProjectId === right.externalProjectId &&
-    left.externalProjectKey === right.externalProjectKey &&
-    left.canonicalUrl === right.canonicalUrl &&
-    left.snapshotId === right.snapshotId
-  );
+function projectRefsMatch(left: ProjectContextRef, right: ProjectContextRef) {
+  return sameProject(left, right);
 }
 
 type ExecutionBindingResult =
@@ -464,11 +681,18 @@ function validateExecutionBinding(
   execution: ExecutionRecord,
 ): ExecutionBindingResult {
   if (execution.id !== detail.executionId) {
-    return bindingFailure("Execution id did not match the stable command execution id.");
+    return bindingFailure(
+      "Execution id did not match the stable command execution id.",
+    );
   }
 
-  if (execution.specialistId !== record.specialistId || execution.specialistId !== input.specialistId) {
-    return bindingFailure("Execution specialist did not match the case specialist.");
+  if (
+    execution.specialistId !== record.specialistId ||
+    execution.specialistId !== input.specialistId
+  ) {
+    return bindingFailure(
+      "Execution specialist did not match the case specialist.",
+    );
   }
 
   if (execution.stageId !== input.stageId) {
@@ -480,11 +704,20 @@ function validateExecutionBinding(
   }
 
   if (!execution.result) {
-    return bindingFailure("Execution result is required before evidence can be attached.");
+    return bindingFailure(
+      "Execution result is required before evidence can be attached.",
+    );
   }
 
   for (const evidence of execution.result.evidence) {
-    const evidenceFailure = validateEvidenceBinding(evidence, record, input, decision, detail, execution.id);
+    const evidenceFailure = validateEvidenceBinding(
+      evidence,
+      record,
+      input,
+      decision,
+      detail,
+      execution.id,
+    );
 
     if (evidenceFailure) {
       return bindingFailure(evidenceFailure);
@@ -511,7 +744,9 @@ function validateExecutionBinding(
     execution.status !== "completed" ||
     !successfulExecutionOutcomes.has(execution.result.outcome)
   ) {
-    return bindingFailure("Execution did not return a terminal successful or failed result.");
+    return bindingFailure(
+      "Execution did not return a terminal successful or failed result.",
+    );
   }
 
   if (execution.result.evidence.length === 0) {
@@ -550,6 +785,20 @@ function validateEvidenceBinding(
     commandId: detail.commandId,
     executionId,
     idempotencyKey: detail.idempotencyKey,
+    ...(record.project.sourceOfTruth === "novel-owner"
+      ? {
+          ownerSchema: "asos-owner.v1",
+          novelId: record.project.novelId,
+          manuscriptId: record.project.manuscriptId,
+          versionId: record.project.versionId,
+          contentDigest: record.project.contentDigest,
+          authorIssuer: record.project.author.issuer,
+          authorSubject: record.project.author.subject,
+          ...(input.proposalDigest
+            ? { proposalDigest: input.proposalDigest }
+            : {}),
+        }
+      : {}),
   };
 
   for (const [key, value] of Object.entries(expected)) {
@@ -567,7 +816,9 @@ function applyExecutionThroughKernel(
   outcome: CaseOutcome,
   now: string,
   authorityDecisionId: CaseAuthorityDecisionRecord["id"],
-): Readonly<{ ok: true; record: CaseRecord }> | Readonly<{ ok: false; message: string }> {
+):
+  | Readonly<{ ok: true; record: CaseRecord }>
+  | Readonly<{ ok: false; message: string }> {
   const attachedExecution = processCaseStep({
     caseRecord: record,
     step: {
@@ -586,7 +837,8 @@ function applyExecutionThroughKernel(
     caseRecord: attachedExecution.value,
     step: {
       type: "attach_evidence",
-      evidenceIds: execution.result?.evidence.map((evidence) => evidence.id) ?? [],
+      evidenceIds:
+        execution.result?.evidence.map((evidence) => evidence.id) ?? [],
       attachedAt: now,
     },
   });
@@ -611,7 +863,9 @@ function applyExecutionThroughKernel(
   return { ok: true, record: closed.value };
 }
 
-function kernelFailure(error: CaseKernelError): Readonly<{ ok: false; message: string }> {
+function kernelFailure(
+  error: CaseKernelError,
+): Readonly<{ ok: false; message: string }> {
   return {
     ok: false,
     message: error.message,
@@ -626,7 +880,10 @@ async function saveCase(
   value?: VersionedCase,
 ): Promise<
   | Readonly<{ ok: true; value: VersionedCase }>
-  | Readonly<{ ok: false; result: Extract<CaseApplicationResult, { ok: false }> }>
+  | Readonly<{
+      ok: false;
+      result: Extract<CaseApplicationResult, { ok: false }>;
+    }>
 > {
   try {
     const result = await cases.save(record, expectedVersion);
@@ -651,12 +908,20 @@ async function saveCase(
   } catch (error: unknown) {
     return {
       ok: false,
-      result: failure("persistence_failure", errorMessage(error), detail, value),
+      result: failure(
+        "persistence_failure",
+        errorMessage(error),
+        detail,
+        value,
+      ),
     };
   }
 }
 
-function caseHasCompletedCommand(record: CaseRecord, executionId: ExecutionRecord["id"]): boolean {
+function caseHasCompletedCommand(
+  record: CaseRecord,
+  executionId: ExecutionRecord["id"],
+): boolean {
   return (
     record.status === "closed" &&
     record.executionIds.includes(executionId) &&

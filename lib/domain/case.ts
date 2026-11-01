@@ -1,6 +1,11 @@
 import type { AuthorityDecision, AuthorityEvaluationResult } from "./authority";
-import type { EvidenceRecord, ExecutionRecord, ProjectContextRef } from "./execution";
-import type { SpecialistProfile } from "./specialists";
+import type {
+  EvidenceRecord,
+  ExecutionRecord,
+  ProjectContextRef,
+} from "./execution";
+import type { SpecialistIdentity } from "./registration";
+import type { GovernanceBinding } from "./governance";
 
 export type CaseId = string;
 
@@ -23,7 +28,7 @@ export type CaseRequest = {
 export type CaseAuthorityDecisionRecord = {
   id: string;
   decidedAt: string;
-  specialistId: SpecialistProfile["id"];
+  specialistId: SpecialistIdentity;
   decision: AuthorityDecision;
   authorityResult: AuthorityEvaluationResult;
   executionId?: ExecutionRecord["id"];
@@ -41,7 +46,8 @@ export type CaseRecord = {
   title: string;
   request: CaseRequest;
   project: ProjectContextRef;
-  specialistId: SpecialistProfile["id"];
+  specialistId: SpecialistIdentity;
+  governanceBinding?: GovernanceBinding;
   status: CaseStatus;
   executionIds: ExecutionRecord["id"][];
   evidenceIds: EvidenceRecord["id"][];
@@ -65,27 +71,32 @@ export type CaseDomainError = {
 };
 
 export type CaseDomainResult<T> =
-  | { ok: true; value: T }
-  | { ok: false; error: CaseDomainError };
+  { ok: true; value: T } | { ok: false; error: CaseDomainError };
 
 export type OpenCaseInput = {
   id: CaseId;
   title: string;
   request: CaseRequest;
   project: ProjectContextRef;
-  specialistId: SpecialistProfile["id"];
+  specialistId: SpecialistIdentity;
   openedAt: string;
+  governanceBinding?: GovernanceBinding;
 };
 
 function ok<T>(value: T): CaseDomainResult<T> {
   return { ok: true, value };
 }
 
-function deny<T>(code: CaseDomainErrorCode, message: string): CaseDomainResult<T> {
+function deny<T>(
+  code: CaseDomainErrorCode,
+  message: string,
+): CaseDomainResult<T> {
   return { ok: false, error: { code, message } };
 }
 
-function nextStatusForAuthorityDecision(decision: AuthorityDecision): CaseStatus {
+function nextStatusForAuthorityDecision(
+  decision: AuthorityDecision,
+): CaseStatus {
   if (decision === "allow") {
     return "authorized";
   }
@@ -105,6 +116,9 @@ export function openCase(input: OpenCaseInput): CaseDomainResult<CaseRecord> {
     request: input.request,
     project: input.project,
     specialistId: input.specialistId,
+    ...(input.governanceBinding
+      ? { governanceBinding: input.governanceBinding }
+      : {}),
     status: "open",
     executionIds: [],
     evidenceIds: [],
@@ -120,11 +134,17 @@ export function recordAuthorityDecision(
   updatedAt: string,
 ): CaseDomainResult<CaseRecord> {
   if (record.status === "closed") {
-    return deny("case_closed", "Cannot record an authority decision on a closed case.");
+    return deny(
+      "case_closed",
+      "Cannot record an authority decision on a closed case.",
+    );
   }
 
   if (decision.decision === "deny" && decision.appliedToWork === true) {
-    return deny("denied_decision_applied", "A denied authority decision cannot be represented as applied work.");
+    return deny(
+      "denied_decision_applied",
+      "A denied authority decision cannot be represented as applied work.",
+    );
   }
 
   return ok({
@@ -189,11 +209,21 @@ export function closeCase(
     return deny("missing_outcome", "Cannot close a case without an outcome.");
   }
 
-  if ((outcome.result === "successful" || outcome.result === "partial") && record.evidenceIds.length === 0) {
-    return deny("evidence_required", "Successful and partial case outcomes require at least one evidence reference.");
+  if (
+    (outcome.result === "successful" || outcome.result === "partial") &&
+    record.evidenceIds.length === 0
+  ) {
+    return deny(
+      "evidence_required",
+      "Successful and partial case outcomes require at least one evidence reference.",
+    );
   }
 
-  if (outcome.result === "failed" && record.evidenceIds.length === 0 && outcome.summary.trim().length === 0) {
+  if (
+    outcome.result === "failed" &&
+    record.evidenceIds.length === 0 &&
+    outcome.summary.trim().length === 0
+  ) {
     return deny(
       "failed_reason_required",
       "A failed case may close without evidence only when a reason is recorded in the outcome summary.",

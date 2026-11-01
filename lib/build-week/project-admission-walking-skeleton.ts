@@ -386,7 +386,7 @@ export async function runProjectAdmissionWalkingSkeleton(
     "7. Remediation Specialist attempted to approve its own proposed action.",
     `8. Kernel rejected self-approval: ${publicRejectedDecision?.reason ?? selfApproval.error.message}`,
     "9. Authorized Human Operator supplied trusted approval for the bounded remediation.",
-    `10. Authority gate allowed execution: ${allowedDecision?.reason ?? "approved"}`,
+    `10. Authority gate allowed execution: ${allowedDecision?.authorityResult.reason ?? "approved"}`,
     "11. Deterministic remediation simulation executed through CaseApplicationService.",
     `12. Verification evidence recorded: ${evidence.map((item) => item.id).join(", ")}.`,
     `13. Case closed with outcome: ${finalCase.outcome?.result ?? "unknown"}.`,

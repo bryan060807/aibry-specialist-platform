@@ -42,3 +42,6 @@ tsconfig.tsbuildinfo
 /.sites-runtime/
 /outputs/
 /work/
+
+/packages/asos-kernel/dist/
+*.tgz

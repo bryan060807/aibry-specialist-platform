@@ -1,0 +1,21 @@
+{
+  "name": "@aibry/asos-kernel",
+  "version": "0.2.0-proposed.1",
+  "private": true,
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/public/index.d.ts",
+      "import": "./dist/public/index.js"
+    }
+  },
+  "dependencies": {
+    "zod": "4.3.6"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  }
+}

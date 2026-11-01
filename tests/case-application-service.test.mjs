@@ -1,67 +1,14 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { readFileSync } from "node:fs";
 import test from "node:test";
-import ts from "typescript";
 
 const modulesPromise = importApplicationModules();
 
 async function importApplicationModules() {
-  const outputRoot = mkdtempSync(join(tmpdir(), "asos-application-service-test-"));
-  const modulePaths = [
-    "lib/domain/case.ts",
-    "lib/domain/authority.ts",
-    "lib/domain/execution.ts",
-    "lib/domain/specialists.ts",
-    "lib/kernel/case-kernel.ts",
-    "lib/application/ports/authority-resolution.ts",
-    "lib/application/ports/case-persistence.ts",
-    "lib/application/ports/command-execution.ts",
-    "lib/application/case-application-service.ts",
-  ];
-
-  for (const modulePath of modulePaths) {
-    const source = readFileSync(new URL(`../${modulePath}`, import.meta.url), "utf8");
-    const output = ts.transpileModule(source, {
-      compilerOptions: {
-        module: ts.ModuleKind.ES2022,
-        target: ts.ScriptTarget.ES2022,
-      },
-      fileName: modulePath,
-      reportDiagnostics: true,
-    });
-    const errorDiagnostics = output.diagnostics?.filter(
-      (diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error,
-    );
-
-    assert.deepEqual(errorDiagnostics, []);
-
-    const outputPath = join(outputRoot, modulePath.replace(/\.ts$/, ".js"));
-    mkdirSync(dirname(outputPath), { recursive: true });
-    writeFileSync(outputPath, addJsExtensions(output.outputText));
-  }
-
-  const [service, authority] = await Promise.all([
-    import(pathToFileURL(join(outputRoot, "lib/application/case-application-service.js")).href),
-    import(pathToFileURL(join(outputRoot, "lib/domain/authority.js")).href),
-  ]);
-
-  return { ...service, ...authority };
-}
-
-function addJsExtensions(source) {
-  return source.replace(
-    /(from\s+["'])(\.\.?\/[^"']+?)(["'];?)/g,
-    (match, prefix, specifier, suffix) => {
-      if (/\.[cm]?js$/.test(specifier)) {
-        return match;
-      }
-
-      return `${prefix}${specifier}.js${suffix}`;
-    },
-  );
+  return {
+    ...(await import("../lib/application/case-application-service.ts")),
+    ...(await import("../lib/domain/authority.ts")),
+  };
 }
 
 function project(overrides = {}) {
@@ -143,14 +90,18 @@ class MemoryCasePersistence {
       throw new Error(`save ${this.saveCount} unavailable`);
     }
 
-    if (this.conflictOnSave.has(this.saveCount) || expectedVersion !== this.version) {
+    if (
+      this.conflictOnSave.has(this.saveCount) ||
+      expectedVersion !== this.version
+    ) {
       return {
         ok: false,
         conflict: {
           kind: "version_conflict",
-          current: this.current && this.version
-            ? { record: this.current, version: this.version }
-            : undefined,
+          current:
+            this.current && this.version
+              ? { record: this.current, version: this.version }
+              : undefined,
         },
       };
     }
@@ -173,7 +124,8 @@ async function createService({
   persistence = new MemoryCasePersistence(),
   executor,
 } = {}) {
-  const { createCaseApplicationService, evaluateAuthority } = await modulesPromise;
+  const { createCaseApplicationService, evaluateAuthority } =
+    await modulesPromise;
 
   return {
     service: createCaseApplicationService({
@@ -221,7 +173,12 @@ function successfulExecutor(runInput, overrides = {}) {
 function executionFor(command, runInput, overrides = {}) {
   const executionId = `execution:${command.authorityDecisionId}`;
   const evidence = overrides.evidence ?? [
-    evidenceFor(command, runInput, executionId, overrides.evidenceMetadata ?? {}),
+    evidenceFor(
+      command,
+      runInput,
+      executionId,
+      overrides.evidenceMetadata ?? {},
+    ),
   ];
 
   return {
@@ -237,7 +194,8 @@ function executionFor(command, runInput, overrides = {}) {
     updatedAt: "2026-07-16T10:00:01.000Z",
     result: overrides.result ?? {
       outcome: overrides.outcome ?? "applied",
-      summary: overrides.summary ?? "Governed work completed with bound evidence.",
+      summary:
+        overrides.summary ?? "Governed work completed with bound evidence.",
       evidence,
       completedAt: "2026-07-16T10:00:02.000Z",
     },
@@ -325,8 +283,12 @@ test("authorized execution with evidence closes successfully", async () => {
   assert.equal(result.ok, true);
   assert.equal(result.value.case.record.status, "closed");
   assert.equal(result.value.outcome.result, "successful");
-  assert.deepEqual(result.value.case.record.executionIds, [result.detail.executionId]);
-  assert.deepEqual(result.value.case.record.evidenceIds, ["evidence-application-1"]);
+  assert.deepEqual(result.value.case.record.executionIds, [
+    result.detail.executionId,
+  ]);
+  assert.deepEqual(result.value.case.record.evidenceIds, [
+    "evidence-application-1",
+  ]);
   assert.equal(executor.calls.length, 1);
   assert.deepEqual(Object.keys(executor.calls[0]).sort(), [
     "authorityDecisionId",
@@ -361,7 +323,10 @@ test("recovers after execution completed but later persistence failed", async ()
 
       if (!completedCommands.has(command.idempotencyKey)) {
         sideEffects += 1;
-        completedCommands.set(command.idempotencyKey, executionFor(command, runInput));
+        completedCommands.set(
+          command.idempotencyKey,
+          executionFor(command, runInput),
+        );
       }
 
       return completedCommands.get(command.idempotencyKey);
@@ -400,7 +365,10 @@ test("mismatched execution and evidence bindings are rejected", async (t) => {
     ["project", { project: project({ externalProjectId: "wrong-project" }) }],
     ["specialist", { specialistId: "manager" }],
     ["stage", { stageId: "validate" }],
-    ["decision", { evidenceMetadata: { authorityDecisionId: "wrong-decision" } }],
+    [
+      "decision",
+      { evidenceMetadata: { authorityDecisionId: "wrong-decision" } },
+    ],
     ["execution", { executionId: "wrong-execution" }],
     ["command", { evidenceMetadata: { commandId: "wrong-command" } }],
     ["idempotency", { evidenceMetadata: { idempotencyKey: "wrong-key" } }],
@@ -447,7 +415,9 @@ test("failed or cancelled execution cannot close successful", async (t) => {
 
 test("authority, persistence, and execution exceptions become structured failures", async (t) => {
   await t.test("authority", async () => {
-    const executor = successfulExecutor(input({ caseId: "case-authority-throws" }));
+    const executor = successfulExecutor(
+      input({ caseId: "case-authority-throws" }),
+    );
     const { service } = await createService({
       authority: {
         async resolve() {
@@ -457,7 +427,9 @@ test("authority, persistence, and execution exceptions become structured failure
       executor,
     });
 
-    const result = await service.run(input({ caseId: "case-authority-throws" }));
+    const result = await service.run(
+      input({ caseId: "case-authority-throws" }),
+    );
 
     assert.equal(result.ok, false);
     assert.equal(result.error.code, "authority_failure");
@@ -492,7 +464,9 @@ test("authority, persistence, and execution exceptions become structured failure
         },
       },
     });
-    const result = await service.run(input({ caseId: "case-execution-throws" }));
+    const result = await service.run(
+      input({ caseId: "case-execution-throws" }),
+    );
 
     assert.equal(result.ok, false);
     assert.equal(result.error.code, "execution_failure");
@@ -504,10 +478,17 @@ test("service remains provider independent and exposes no spoofable authority fi
     new URL("../lib/application/case-application-service.ts", import.meta.url),
     "utf8",
   );
-  const publicInput = source.match(/export type RunGovernedCaseInput[\s\S]*?\n\};/)?.[0] ?? "";
+  const publicInput =
+    source.match(/export type RunGovernedCaseInput[\s\S]*?\n\};/)?.[0] ?? "";
 
-  assert.doesNotMatch(publicInput, /\b(?:hasHumanAuthorization|currentStatus|isWithinApprovedScope|decision|status)\b/);
-  assert.doesNotMatch(source, /\b(?:openai|anthropic|gpt|claude|model|http|fetch|axios|postgres|sqlite|drizzle|prisma|database|db)\b/i);
+  assert.doesNotMatch(
+    publicInput,
+    /\b(?:hasHumanAuthorization|currentStatus|isWithinApprovedScope|decision|status)\b/,
+  );
+  assert.doesNotMatch(
+    source,
+    /\b(?:openai|anthropic|gpt|claude|model|http|fetch|axios|postgres|sqlite|drizzle|prisma|database|db)\b/i,
+  );
   assert.match(source, /TrustedAuthorityResolver/);
   assert.match(source, /VersionedCasePersistence/);
   assert.match(source, /IdempotentCaseCommandExecutor/);

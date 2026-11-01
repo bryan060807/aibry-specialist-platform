@@ -11,20 +11,26 @@
     "build": "node scripts/build-verified.mjs",
     "start": "node scripts/run-with-sites-env.mjs vinext start",
     "test": "npm run build && node --test tests/rendered-html.test.mjs",
-    "test:build-week": "node --test tests/build-week-walking-skeleton.test.mjs",
+    "test:build-week": "node --import tsx --test tests/build-week-walking-skeleton.test.mjs",
     "validate:artifact": "node scripts/validate-artifact.mjs",
     "smoke:prod": "node scripts/smoke-prod.mjs",
     "lint": "node scripts/run-with-sites-env.mjs eslint . --ignore-pattern dist --ignore-pattern .next",
-    "db:generate": "node scripts/run-with-sites-env.mjs drizzle-kit generate"
+    "db:generate": "node scripts/run-with-sites-env.mjs drizzle-kit generate",
+    "build:kernel": "node scripts/build-kernel-package.mjs",
+    "typecheck": "tsc --noEmit",
+    "test:kernel": "node --import tsx --test tests/authority.test.mjs tests/case.test.mjs tests/case-kernel.test.mjs tests/case-application-service.test.mjs tests/application-ports.test.mjs tests/build-week-walking-skeleton.test.mjs tests/editorial-conformance.test.mjs",
+    "format:kernel": "prettier --check lib/domain/governance.ts lib/domain/registration.ts lib/domain/editorial-authority.ts lib/domain/runtime.ts lib/public scripts/build-kernel-package.mjs packages/asos-kernel/package.json tsconfig.kernel.json tests/editorial-conformance.test.mjs"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",
     "next": "16.2.6",
     "react": "19.2.6",
-    "react-dom": "19.2.6"
+    "react-dom": "19.2.6",
+    "zod": "4.3.6"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.37.1",
+    "@cloudflare/workers-types": "4.20260702.1",
     "@tailwindcss/postcss": "4.2.1",
     "@types/node": "22.19.19",
     "@types/react": "19.2.14",
@@ -34,8 +40,10 @@
     "drizzle-kit": "0.31.10",
     "eslint": "9.39.4",
     "eslint-config-next": "16.2.6",
+    "prettier": "3.9.10",
     "react-server-dom-webpack": "19.2.6",
     "tailwindcss": "4.2.1",
+    "tsx": "4.23.15",
     "typescript": "5.9.3",
     "vinext": "0.0.50",
     "vite": "8.0.13",
