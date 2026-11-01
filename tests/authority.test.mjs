@@ -1,28 +1,10 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
-import ts from "typescript";
 
 const authorityModulePromise = importAuthorityModule();
 
 async function importAuthorityModule() {
-  const source = readFileSync(new URL("../lib/domain/authority.ts", import.meta.url), "utf8");
-  const output = ts.transpileModule(source, {
-    compilerOptions: {
-      module: ts.ModuleKind.ES2022,
-      target: ts.ScriptTarget.ES2022,
-    },
-    fileName: "authority.ts",
-    reportDiagnostics: true,
-  });
-
-  const errorDiagnostics = output.diagnostics?.filter(
-    (diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error,
-  );
-
-  assert.deepEqual(errorDiagnostics, []);
-
-  return import(`data:text/javascript;base64,${Buffer.from(output.outputText).toString("base64")}`);
+  return import("../lib/domain/authority.ts");
 }
 
 async function evaluate(input) {

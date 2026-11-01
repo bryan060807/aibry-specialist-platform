@@ -1,16 +1,12 @@
-import type { AuthorityStageId, SpecialistProfile } from "./specialists";
+import type { AuthorityStageId } from "./specialists";
 
-export type SpecialistId = SpecialistProfile["id"];
+import type { SpecialistIdentity } from "./registration";
+import type { ProjectReference } from "./governance";
+export type SpecialistId = SpecialistIdentity;
 
 export type ExecutionStageId = AuthorityStageId;
 
-export type ProjectContextRef = {
-  sourceOfTruth: "catalog-os";
-  externalProjectId: string;
-  externalProjectKey?: string;
-  canonicalUrl?: string;
-  snapshotId?: string;
-};
+export type ProjectContextRef = ProjectReference;
 
 export type ExecutionStatus =
   | "draft"

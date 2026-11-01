@@ -1,14 +1,20 @@
 import type { ExecutionStatus } from "./execution";
-import type { AuthorityStageId, SpecialistProfile } from "./specialists";
+import type { AuthorityStageId } from "./specialists";
 
-export type SpecialistId = SpecialistProfile["id"];
+import type { SpecialistIdentity } from "./registration";
+import type { GovernanceBinding, GovernanceContext } from "./governance";
+import { evaluateEditorialAuthority } from "./editorial-authority";
+export type SpecialistId = SpecialistIdentity;
 
-export type AuthorityDecision = "allow" | "require_human_authorization" | "deny";
+export type AuthorityDecision =
+  "allow" | "require_human_authorization" | "deny";
 
 export type AuthorityPolicyId =
   | "archivist-observe-only"
   | "project-admitter-human-approved-apply"
-  | "music-manager-scoped-human-approved-apply";
+  | "music-manager-scoped-human-approved-apply"
+  | "brutal-edit.editorial.v1"
+  | "brutal-edit.validator.v1";
 
 export type AuthorityRule = {
   id: string;
@@ -37,6 +43,9 @@ export type AuthorityEvaluationInput = {
   hasHumanAuthorization: boolean;
   requestedAction?: string;
   isWithinApprovedScope?: boolean;
+  binding?: GovernanceBinding;
+  governance?: GovernanceContext;
+  evaluatedAt?: string;
 };
 
 export type AuthorityEvaluationReasonCode =
@@ -48,7 +57,12 @@ export type AuthorityEvaluationReasonCode =
   | "human_authorization_required"
   | "approved_scope_required"
   | "invalid_execution_status"
-  | "allowed";
+  | "allowed"
+  | "governance_binding_invalid"
+  | "trusted_context_required"
+  | "owner_scope_denied"
+  | "validator_not_independent"
+  | "approval_binding_invalid";
 
 export type AuthorityEvaluationResult = {
   decision: AuthorityDecision;
@@ -56,12 +70,31 @@ export type AuthorityEvaluationResult = {
   reasonCode: AuthorityEvaluationReasonCode;
   policyId?: AuthorityPolicyId;
   ruleId?: string;
+  proof?: {
+    accessId: string;
+    approvalReceiptId?: string;
+    actor: import("./governance").Principal;
+    expiresAt: string;
+  };
 };
 
-const nonActionableStatuses: readonly ExecutionStatus[] = ["blocked", "failed", "cancelled"];
+const nonActionableStatuses: readonly ExecutionStatus[] = [
+  "blocked",
+  "failed",
+  "cancelled",
+];
 
 const stageStatusRequirements = {
-  observe: ["draft", "observing", "proposed", "waiting_for_authorization", "authorized", "applying", "validating", "completed"],
+  observe: [
+    "draft",
+    "observing",
+    "proposed",
+    "waiting_for_authorization",
+    "authorized",
+    "applying",
+    "validating",
+    "completed",
+  ],
   propose: ["draft", "observing", "proposed"],
   authorize: ["proposed", "waiting_for_authorization", "authorized"],
   apply: ["authorized", "applying"],
@@ -75,13 +108,20 @@ export const authorityPolicies: readonly AuthorityPolicy[] = [
     allowedStages: ["observe", "validate"],
     humanGatedStages: [],
     prohibitedStages: ["propose", "authorize", "apply"],
-    prohibitedActions: ["create_record", "update_record", "delete_record", "mutate_source", "apply_change"],
+    prohibitedActions: [
+      "create_record",
+      "update_record",
+      "delete_record",
+      "mutate_source",
+      "apply_change",
+    ],
     rules: [
       {
         id: "archivist-no-autonomous-mutation",
         stages: ["propose", "authorize", "apply"],
         decision: "deny",
-        reason: "Archivist authority is observe-only and cannot propose, authorize, or apply mutations.",
+        reason:
+          "Archivist authority is observe-only and cannot propose, authorize, or apply mutations.",
       },
     ],
   },
@@ -97,7 +137,8 @@ export const authorityPolicies: readonly AuthorityPolicy[] = [
         id: "admitter-human-authorization",
         stages: ["authorize", "apply"],
         decision: "require_human_authorization",
-        reason: "Project Admitter requires explicit human authorization before authorization or apply stages proceed.",
+        reason:
+          "Project Admitter requires explicit human authorization before authorization or apply stages proceed.",
         requiresHumanAuthorization: true,
       },
     ],
@@ -108,28 +149,40 @@ export const authorityPolicies: readonly AuthorityPolicy[] = [
     allowedStages: ["observe", "propose", "validate", "apply"],
     humanGatedStages: ["authorize"],
     prohibitedStages: [],
-    prohibitedActions: ["mutate_source", "transfer_ownership", "publish_release"],
+    prohibitedActions: [
+      "mutate_source",
+      "transfer_ownership",
+      "publish_release",
+    ],
     rules: [
       {
         id: "manager-human-authorization",
         stages: ["authorize", "apply"],
         decision: "require_human_authorization",
-        reason: "Music Manager requires explicit human authorization before authorization or apply stages proceed.",
+        reason:
+          "Music Manager requires explicit human authorization before authorization or apply stages proceed.",
         requiresHumanAuthorization: true,
       },
       {
         id: "manager-approved-scope",
         stages: ["apply"],
         decision: "deny",
-        reason: "Music Manager apply authority is limited to the approved scope.",
+        reason:
+          "Music Manager apply authority is limited to the approved scope.",
         requiresApprovedScope: true,
       },
     ],
   },
 ];
 
-export function evaluateAuthority(input: AuthorityEvaluationInput): AuthorityEvaluationResult {
-  const policy = authorityPolicies.find((candidate) => candidate.specialistId === input.specialistId);
+export function evaluateAuthority(
+  input: AuthorityEvaluationInput,
+): AuthorityEvaluationResult {
+  if (input.specialistId.includes(".") || input.binding)
+    return evaluateEditorialAuthority(input);
+  const policy = authorityPolicies.find(
+    (candidate) => candidate.specialistId === input.specialistId,
+  );
 
   if (!policy) {
     return {
@@ -148,7 +201,10 @@ export function evaluateAuthority(input: AuthorityEvaluationInput): AuthorityEva
     };
   }
 
-  if (input.requestedAction && policy.prohibitedActions.includes(input.requestedAction)) {
+  if (
+    input.requestedAction &&
+    policy.prohibitedActions.includes(input.requestedAction)
+  ) {
     return {
       decision: "deny",
       reason: `Action "${input.requestedAction}" is prohibited by policy "${policy.id}".`,
@@ -158,11 +214,15 @@ export function evaluateAuthority(input: AuthorityEvaluationInput): AuthorityEva
   }
 
   if (policy.prohibitedStages.includes(input.requestedStageId)) {
-    const rule = policy.rules.find((candidate) => candidate.stages.includes(input.requestedStageId));
+    const rule = policy.rules.find((candidate) =>
+      candidate.stages.includes(input.requestedStageId),
+    );
 
     return {
       decision: "deny",
-      reason: rule?.reason ?? `Stage "${input.requestedStageId}" is prohibited by policy "${policy.id}".`,
+      reason:
+        rule?.reason ??
+        `Stage "${input.requestedStageId}" is prohibited by policy "${policy.id}".`,
       reasonCode: "stage_prohibited",
       policyId: policy.id,
       ruleId: rule?.id,
@@ -188,7 +248,11 @@ export function evaluateAuthority(input: AuthorityEvaluationInput): AuthorityEva
       candidate.stages.includes(input.requestedStageId),
   );
 
-  if ((policy.humanGatedStages.includes(input.requestedStageId) || humanAuthorizationRule) && !input.hasHumanAuthorization) {
+  if (
+    (policy.humanGatedStages.includes(input.requestedStageId) ||
+      humanAuthorizationRule) &&
+    !input.hasHumanAuthorization
+  ) {
     return {
       decision: "require_human_authorization",
       reason:
@@ -200,7 +264,11 @@ export function evaluateAuthority(input: AuthorityEvaluationInput): AuthorityEva
     };
   }
 
-  if (!stageStatusRequirements[input.requestedStageId].includes(input.currentStatus)) {
+  if (
+    !stageStatusRequirements[input.requestedStageId].some(
+      (status) => status === input.currentStatus,
+    )
+  ) {
     return {
       decision: "deny",
       reason: `Execution status "${input.currentStatus}" cannot transition to stage "${input.requestedStageId}".`,

@@ -1,58 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { pathToFileURL } from "node:url";
 import test from "node:test";
-import ts from "typescript";
 
 const kernelModulePromise = importKernelModule();
 
 async function importKernelModule() {
-  const outputRoot = mkdtempSync(join(tmpdir(), "asos-kernel-test-"));
-  const modulePaths = [
-    "lib/domain/case.ts",
-    "lib/domain/authority.ts",
-    "lib/domain/execution.ts",
-    "lib/domain/specialists.ts",
-    "lib/kernel/case-kernel.ts",
-  ];
-
-  for (const modulePath of modulePaths) {
-    const source = readFileSync(new URL(`../${modulePath}`, import.meta.url), "utf8");
-    const output = ts.transpileModule(source, {
-      compilerOptions: {
-        module: ts.ModuleKind.ES2022,
-        target: ts.ScriptTarget.ES2022,
-      },
-      fileName: modulePath,
-      reportDiagnostics: true,
-    });
-    const errorDiagnostics = output.diagnostics?.filter(
-      (diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error,
-    );
-
-    assert.deepEqual(errorDiagnostics, []);
-
-    const outputPath = join(outputRoot, modulePath.replace(/\.ts$/, ".js"));
-    mkdirSync(dirname(outputPath), { recursive: true });
-    writeFileSync(outputPath, addJsExtensions(output.outputText));
-  }
-
-  return import(pathToFileURL(join(outputRoot, "lib/kernel/case-kernel.js")).href);
-}
-
-function addJsExtensions(source) {
-  return source.replace(
-    /(from\s+["'])(\.\.?\/[^"']+?)(["'];?)/g,
-    (match, prefix, specifier, suffix) => {
-      if (/\.[cm]?js$/.test(specifier)) {
-        return match;
-      }
-
-      return `${prefix}${specifier}.js${suffix}`;
-    },
-  );
+  return import("../lib/kernel/case-kernel.ts");
 }
 
 function request(overrides = {}) {
@@ -93,7 +45,11 @@ async function openCaseFor(specialistId, project = projectRef()) {
   return opened.value;
 }
 
-async function evaluateApply(record, hasHumanAuthorization, decisionId = "decision-apply") {
+async function evaluateApply(
+  record,
+  hasHumanAuthorization,
+  decisionId = "decision-apply",
+) {
   const { processCaseStep } = await kernelModulePromise;
 
   return processCaseStep({
@@ -112,7 +68,11 @@ async function evaluateApply(record, hasHumanAuthorization, decisionId = "decisi
 test("Archivist denied apply returns a structured conflict and attaches no execution", async () => {
   const { processCaseStep } = await kernelModulePromise;
   const record = await openCaseFor("archivist");
-  const evaluated = await evaluateApply(record, true, "decision-archivist-apply");
+  const evaluated = await evaluateApply(
+    record,
+    true,
+    "decision-archivist-apply",
+  );
 
   assert.equal(evaluated.ok, true);
   assert.equal(evaluated.detail.authorityResult.decision, "deny");
@@ -137,10 +97,17 @@ test("Archivist denied apply returns a structured conflict and attaches no execu
 test("Project Admitter apply is blocked before human authorization", async () => {
   const { processCaseStep } = await kernelModulePromise;
   const record = await openCaseFor("admitter");
-  const evaluated = await evaluateApply(record, false, "decision-admitter-blocked");
+  const evaluated = await evaluateApply(
+    record,
+    false,
+    "decision-admitter-blocked",
+  );
 
   assert.equal(evaluated.ok, true);
-  assert.equal(evaluated.detail.authorityResult.decision, "require_human_authorization");
+  assert.equal(
+    evaluated.detail.authorityResult.decision,
+    "require_human_authorization",
+  );
   assert.equal(evaluated.value.status, "waiting_for_authority");
 
   const attached = processCaseStep({
@@ -160,9 +127,15 @@ test("Project Admitter apply is blocked before human authorization", async () =>
 
 test("Project Admitter apply is allowed after human authorization", async () => {
   const { processCaseStep } = await kernelModulePromise;
-  const project = projectRef({ externalProjectId: "catalog-project-authorized" });
+  const project = projectRef({
+    externalProjectId: "catalog-project-authorized",
+  });
   const record = await openCaseFor("admitter", project);
-  const evaluated = await evaluateApply(record, true, "decision-admitter-allowed");
+  const evaluated = await evaluateApply(
+    record,
+    true,
+    "decision-admitter-allowed",
+  );
 
   assert.equal(evaluated.ok, true);
   assert.equal(evaluated.detail.authorityResult.decision, "allow");
@@ -245,7 +218,9 @@ test("duplicate execution and evidence attachment are idempotent", async () => {
 
   assert.equal(duplicateExecution.ok, true);
   assert.equal(duplicateExecution.detail.changed, false);
-  assert.deepEqual(duplicateExecution.value.executionIds, ["execution-idempotent"]);
+  assert.deepEqual(duplicateExecution.value.executionIds, [
+    "execution-idempotent",
+  ]);
   assert.equal(duplicateExecution.value.updatedAt, "2026-07-15T12:05:00.000Z");
 
   const firstEvidence = processCaseStep({
@@ -269,7 +244,9 @@ test("duplicate execution and evidence attachment are idempotent", async () => {
 
   assert.equal(duplicateEvidence.ok, true);
   assert.equal(duplicateEvidence.detail.changed, false);
-  assert.deepEqual(duplicateEvidence.value.evidenceIds, ["evidence-idempotent"]);
+  assert.deepEqual(duplicateEvidence.value.evidenceIds, [
+    "evidence-idempotent",
+  ]);
   assert.equal(duplicateEvidence.value.updatedAt, "2026-07-15T12:07:00.000Z");
 });
 
@@ -327,4 +304,3 @@ test("closed case rejects further mutation", async () => {
   assert.equal(mutatedWithExecution.ok, false);
   assert.equal(mutatedWithExecution.error.code, "case_closed");
 });
-

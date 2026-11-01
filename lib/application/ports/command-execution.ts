@@ -1,3 +1,4 @@
+import type { GovernanceBinding } from "../../domain/governance";
 import type { CaseAuthorityDecisionRecord, CaseId } from "../../domain/case";
 import type { ExecutionRecord } from "../../domain/execution";
 
@@ -8,6 +9,7 @@ export type ImmutableCaseCommand = Readonly<{
   idempotencyKey: string;
   caseId: CaseId;
   authorityDecisionId: CaseAuthorityDecisionRecord["id"];
+  governanceBinding?: GovernanceBinding;
 }>;
 
 export type IdempotentCaseCommandExecutor = {

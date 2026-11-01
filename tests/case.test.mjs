@@ -1,28 +1,10 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
-import ts from "typescript";
 
 const caseModulePromise = importCaseModule();
 
 async function importCaseModule() {
-  const source = readFileSync(new URL("../lib/domain/case.ts", import.meta.url), "utf8");
-  const output = ts.transpileModule(source, {
-    compilerOptions: {
-      module: ts.ModuleKind.ES2022,
-      target: ts.ScriptTarget.ES2022,
-    },
-    fileName: "case.ts",
-    reportDiagnostics: true,
-  });
-
-  const errorDiagnostics = output.diagnostics?.filter(
-    (diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error,
-  );
-
-  assert.deepEqual(errorDiagnostics, []);
-
-  return import(`data:text/javascript;base64,${Buffer.from(output.outputText).toString("base64")}`);
+  return import("../lib/domain/case.ts");
 }
 
 async function openBaseCase() {
@@ -111,7 +93,11 @@ test("duplicate execution and evidence attachments are idempotent", async () => 
   const { record } = await openBaseCase();
   const { attachEvidence, attachExecution } = await caseModulePromise;
 
-  const firstExecution = attachExecution(record, "execution-1", "2026-07-15T12:03:00.000Z");
+  const firstExecution = attachExecution(
+    record,
+    "execution-1",
+    "2026-07-15T12:03:00.000Z",
+  );
   assert.equal(firstExecution.ok, true);
 
   const duplicateExecution = attachExecution(
@@ -123,7 +109,11 @@ test("duplicate execution and evidence attachments are idempotent", async () => 
   assert.deepEqual(duplicateExecution.value.executionIds, ["execution-1"]);
   assert.equal(duplicateExecution.value.updatedAt, "2026-07-15T12:03:00.000Z");
 
-  const firstEvidence = attachEvidence(firstExecution.value, "evidence-1", "2026-07-15T12:05:00.000Z");
+  const firstEvidence = attachEvidence(
+    firstExecution.value,
+    "evidence-1",
+    "2026-07-15T12:05:00.000Z",
+  );
   assert.equal(firstEvidence.ok, true);
 
   const duplicateEvidence = attachEvidence(
@@ -140,7 +130,11 @@ test("closeCase returns structured denials for invalid closure rules", async () 
   const { record } = await openBaseCase();
   const { closeCase } = await caseModulePromise;
 
-  const missingOutcome = closeCase(record, undefined, "2026-07-15T12:07:00.000Z");
+  const missingOutcome = closeCase(
+    record,
+    undefined,
+    "2026-07-15T12:07:00.000Z",
+  );
   assert.equal(missingOutcome.ok, false);
   assert.equal(missingOutcome.error.code, "missing_outcome");
 
@@ -165,7 +159,11 @@ test("closeCase allows evidence-backed success and reason-backed failure", async
   const { record } = await openBaseCase();
   const { attachEvidence, closeCase } = await caseModulePromise;
 
-  const withEvidence = attachEvidence(record, "evidence-1", "2026-07-15T12:10:00.000Z");
+  const withEvidence = attachEvidence(
+    record,
+    "evidence-1",
+    "2026-07-15T12:10:00.000Z",
+  );
   assert.equal(withEvidence.ok, true);
 
   const successful = closeCase(
@@ -179,7 +177,10 @@ test("closeCase allows evidence-backed success and reason-backed failure", async
 
   const failed = closeCase(
     record,
-    { result: "failed", summary: "Catalog OS project was missing required source metadata." },
+    {
+      result: "failed",
+      summary: "Catalog OS project was missing required source metadata.",
+    },
     "2026-07-15T12:12:00.000Z",
   );
   assert.equal(failed.ok, true);
