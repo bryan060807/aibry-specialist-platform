@@ -14,3 +14,11 @@ Validation: 72 kernel/domain/conformance tests (42 prior regression assertions p
 Full TypeScript exposed previously absent Cloudflare binding declarations and a non-existent allowedDecision.reason field. Added type-only official Worker declarations/derived asset types and corrected the timeline reason reference; no bindings, hosting configuration or production registrations changed.
 
 ADR 0006 is explicitly proposed. AIBRY ID verification, authentic receipt issuance, live revocation, protected production stores and real owner/outbox-to-Case coordination remain external release gates. All new tests use isolated verified-fact fixtures and placeholder content. No production manuscript writes, Music Vault access or deployment occurs.
+
+## Delivery
+
+The implementation and standalone-test follow-up were pushed to `feature/asos-editorial-domain-contracts`. The consumed runtime artifact remains pinned to implementation commit `21e8f8a4040bd9f607fa8b7e1696bd53d9b3a83d`; later commits contain test-command/delivery notes, not a silently replaced artifact.
+
+`gh pr create --draft` against main was attempted and returned `Forbidden` for `https://api.github.com/graphql`. No PR creation is claimed and no network/identity settings were changed. Use this complete description and [open the proposed upstream comparison](https://github.com/bryan060807/aibry-specialist-platform/compare/main...feature/asos-editorial-domain-contracts?expand=1).
+
+Brutal Edit's dependent integration is on `feature/brutal-edit-phase3b-asos`: https://github.com/bryan060807/aibry-brutal-edit/compare/main...feature/brutal-edit-phase3b-asos?expand=1. These are comparison links, not existing PR numbers. Neither branch was merged or deployed.
